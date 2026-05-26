@@ -1,0 +1,17 @@
+crewai
+crewai-tools
+langchain
+langchain-community
+langchain-core
+langchain-ollama
+ollama
+python-dotenv
+pyyaml
+asyncio
+aiohttp
+requests
+pydantic
+rich
+loguru
+duckduckgo-search
+tqdm
