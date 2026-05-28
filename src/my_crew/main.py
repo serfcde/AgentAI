@@ -1,15 +1,12 @@
-from my_crew.crew import create_ai_crew
+from my_crew.workflows.network_flow import run_network_flow
 
 
 def main():
 
-    topic = "Future of AI Agents"
+    result = run_network_flow()
 
-    crew = create_ai_crew(topic)
+    print("\nFINAL RESULT:\n")
 
-    result = crew.kickoff()
-
-    print("\n\nFINAL RESULT:\n")
     print(result)
 
 

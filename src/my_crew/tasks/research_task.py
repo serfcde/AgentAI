@@ -16,6 +16,8 @@ def create_research_task(agent, topic):
         - challenges
         - future scope
 
+        Use the available tools whenever necessary.
+        
         Provide structured research findings.
         """,
 

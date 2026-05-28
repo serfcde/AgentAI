@@ -1,16 +1,23 @@
 from crewai import Agent
+
 from my_crew.config.llm import llm
+
+from my_crew.tools.memory_tool import memory_tool
+from my_crew.tools.notification_tool import notification_tool
+from my_crew.tools.logger_tool import logger_tool
 
 
 def create_supervisor_agent():
+
     return Agent(
         role="Supervisor Agent",
 
         goal="""
-        Coordinate multiple agents,
-        manage workflows,
-        delegate responsibilities,
-        and ensure successful task completion.
+        Coordinate agent workflows,
+        manage delegation,
+        monitor communication,
+        and ensure successful
+        task completion.
         """,
 
         backstory="""
@@ -22,13 +29,22 @@ def create_supervisor_agent():
         - delegation strategies
         - hierarchical AI systems
         - agent communication
+        - distributed orchestration
 
-        You ensure all agents work together efficiently.
+        You ensure all agents collaborate
+        efficiently using shared memory
+        and communication systems.
         """,
 
         verbose=True,
 
         allow_delegation=True,
+
+        tools=[
+            memory_tool,
+            notification_tool,
+            logger_tool
+        ],
 
         llm=llm
     )

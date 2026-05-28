@@ -5,6 +5,6 @@ import os
 load_dotenv()
 
 llm = LLM(
-    model="ollama/llama3.1",
-    base_url="http://localhost:11434" 
+    model=f"ollama/{os.getenv('OLLAMA_MODEL', 'llama3.1')}",
+    base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 )

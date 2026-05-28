@@ -71,9 +71,9 @@ def create_ai_crew(topic: str):
             validation_task
         ],
 
-        process=Process.sequential,
-        #manager_llm=llm, 
-        #manager_agent=supervisor_agent,
+        process=Process.hierarchical,
+        manager_llm=llm, 
+        manager_agent=supervisor_agent,
 
         verbose=True
     )

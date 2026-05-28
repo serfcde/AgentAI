@@ -1,13 +1,16 @@
 from crewai import Task
 
 
-def create_validation_task(agent, topic):
+def create_validation_task(agent, topic, context=""):
     return Task(
         description=f"""
         Validate all outputs generated for:
 
         Topic:
         {topic}
+
+        Execution Context:
+        {context}
 
         Check for:
         - correctness

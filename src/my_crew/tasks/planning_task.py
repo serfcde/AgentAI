@@ -1,13 +1,16 @@
 from crewai import Task
 
 
-def create_planning_task(agent, topic):
+def create_planning_task(agent, topic, context =""):
     return Task(
         description=f"""
         Create a strategic execution plan for:
 
         Topic:
         {topic}
+
+        Research Context:
+        {context}
 
         Break the work into:
         - phases

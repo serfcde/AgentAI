@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-crew"
+version = "0.1.0"
+description = "Production-style CrewAI multi-agent workflow with A2A-style communication."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "AgentAI" }
+]
+dependencies = [
+  "crewai",
+  "crewai-tools",
+  "langchain",
+  "langchain-community",
+  "langchain-core",
+  "langchain-ollama",
+  "ollama",
+  "python-dotenv",
+  "pyyaml",
+  "aiohttp",
+  "requests",
+  "pydantic",
+  "rich",
+  "loguru",
+  "duckduckgo-search",
+  "tqdm"
+]
+
+[project.scripts]
+my-crew = "my_crew.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+my_crew = ["config/*.yaml"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["src/my_crew"]
