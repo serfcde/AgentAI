@@ -1,5 +1,6 @@
 from crewai import Crew, Process
 
+from my_crew.a2a.message import TaskStatus
 from my_crew.agents.researcher import create_research_agent
 from my_crew.agents.planner import create_planner_agent
 from my_crew.agents.executor import create_executor_agent
@@ -10,9 +11,17 @@ from my_crew.tasks.research_task import create_research_task
 from my_crew.tasks.planning_task import create_planning_task
 from my_crew.tasks.execution_task import create_execution_task
 from my_crew.tasks.validation_task import create_validation_task
+from my_crew.workflows.network_flow import create_network_bus
 
 
 def run_hierarchical_flow(topic: str):
+    bus, workflow_task = create_network_bus(topic)
+    bus.update_task_status(
+        workflow_task.task_id,
+        TaskStatus.WORKING,
+        sender="Supervisor Agent",
+        content="Hierarchical workflow delegated to supervisor manager.",
+    )
 
     # -------------------------
     # Create Agents
@@ -26,7 +35,7 @@ def run_hierarchical_flow(topic: str):
 
     validator_agent = create_validator_agent()
 
-    supervisor_agent = create_supervisor_agent()
+    supervisor_agent = create_supervisor_agent(is_manager=True)
 
     # -------------------------
     # Create Tasks
@@ -80,4 +89,27 @@ def run_hierarchical_flow(topic: str):
 
     result = crew.kickoff()
 
-    return result
+    bus.update_task_status(
+        workflow_task.task_id,
+        TaskStatus.COMPLETED,
+        sender="Supervisor Agent",
+        content="Hierarchical workflow completed.",
+    )
+
+    return f"""
+{result}
+
+
+==============================
+A2A TASK SNAPSHOT
+==============================
+
+{bus.task_snapshot()}
+
+
+==============================
+A2A MESSAGE COUNT
+==============================
+
+{len(bus.get_messages())}
+"""

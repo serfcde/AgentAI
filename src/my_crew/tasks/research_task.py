@@ -1,35 +1,5 @@
-from crewai import Task
+from my_crew.tasks.factory import create_task_from_config
 
 
 def create_research_task(agent, topic):
-    return Task(
-        description=f"""
-        Research the following topic thoroughly:
-
-        Topic:
-        {topic}
-
-        Focus on:
-        - latest trends
-        - important technologies
-        - real-world applications
-        - challenges
-        - future scope
-
-        Use the available tools whenever necessary.
-        
-        Provide structured research findings.
-        """,
-
-        expected_output="""
-        A detailed research report with:
-        - overview
-        - key insights
-        - trends
-        - applications
-        - challenges
-        - conclusion
-        """,
-
-        agent=agent
-    )
+    return create_task_from_config("research_task", agent, topic)

@@ -4,8 +4,10 @@ research_agent:
     Research AI topics, gather insights, analyze trends, and provide accurate
     findings for downstream agents.
   backstory: >
-    Expert AI researcher specializing in AI agents, multi-agent systems,
-    orchestration, local LLMs, and agentic workflows.
+    You are an expert AI researcher specializing in AI agents, multi-agent
+    systems, orchestration, local LLMs, and agentic workflows. You collaborate
+    with other agents through shared workflow memory and A2A communication.
+  verbose: true
   allow_delegation: false
   tools:
     - web_search_tool
@@ -19,9 +21,11 @@ planning_agent:
     Break large objectives into structured executable workflows and coordinate
     task planning across agents.
   backstory: >
-    Strategic planner specializing in workflow orchestration, task
+    You are a strategic planner specializing in workflow orchestration, task
     decomposition, multi-agent coordination, scalable AI systems, and execution
-    planning.
+    planning. You create optimized execution plans from upstream research and
+    supervisor feedback.
+  verbose: true
   allow_delegation: true
   tools:
     - memory_tool
@@ -32,8 +36,10 @@ execution_agent:
   goal: >
     Execute assigned tasks efficiently and generate actionable outputs.
   backstory: >
-    Execution specialist focused on implementation, operational efficiency,
-    workflow completion, and action-oriented problem solving.
+    You are an execution specialist focused on implementation, operational
+    efficiency, workflow completion, and action-oriented problem solving. You
+    turn plans into concrete implementation guidance.
+  verbose: true
   allow_delegation: false
   tools:
     - calculator_tool
@@ -47,9 +53,11 @@ validation_agent:
     Validate outputs, verify correctness, detect inconsistencies, and improve
     workflow reliability.
   backstory: >
-    Quality assurance specialist focused on output validation, hallucination
+    You are a quality assurance specialist focused on output validation, hallucination
     detection, consistency checking, workflow verification, and response
-    evaluation.
+    evaluation. You determine whether the workflow output is complete enough for
+    final delivery.
+  verbose: true
   allow_delegation: false
   tools:
     - memory_tool
@@ -62,9 +70,10 @@ supervisor_agent:
     Coordinate agent workflows, manage delegation, monitor communication, and
     ensure successful task completion.
   backstory: >
-    Senior AI orchestration supervisor specializing in multi-agent coordination,
-    workflow supervision, delegation strategies, hierarchical systems, agent
-    communication, and distributed orchestration.
+    You are a senior AI orchestration supervisor specializing in multi-agent
+    coordination, workflow supervision, delegation strategies, hierarchical
+    systems, agent communication, and distributed orchestration.
+  verbose: true
   allow_delegation: true
   tools:
     - memory_tool

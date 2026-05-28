@@ -4,13 +4,15 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: my-crew-app
+    stdin_open: true
+    tty: true
     environment:
       PYTHONPATH: /app/src
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: llama3.1
     depends_on:
-      ollama:
-        condition: service_started
+      ollama-pull:
+        condition: service_completed_successfully
     volumes:
       - ./src:/app/src:ro
       - ./.env:/app/.env:ro
@@ -23,6 +25,25 @@ services:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: my-crew-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_started
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    volumes:
+      - ollama-data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    # 👇 CHANGE TO THIS MULTI-LINE STRING FORMAT
+    command: >
+      "until ollama list >/dev/null 2>&1;
+      do
+        sleep 2;
+      done;
+      ollama pull llama3.1"
 
 volumes:
   ollama-data:

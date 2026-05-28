@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from crewai import Crew, Process
 
+from my_crew.a2a.message import MessageType, TaskStatus
 from my_crew.agents.researcher import create_research_agent
 from my_crew.agents.planner import create_planner_agent
 from my_crew.agents.executor import create_executor_agent
@@ -9,6 +10,7 @@ from my_crew.agents.executor import create_executor_agent
 from my_crew.tasks.research_task import create_research_task
 from my_crew.tasks.planning_task import create_planning_task
 from my_crew.tasks.execution_task import create_execution_task
+from my_crew.workflows.network_flow import create_network_bus, inbox_context
 
 
 def run_research_flow(topic):
@@ -60,6 +62,13 @@ def run_execution_flow(topic):
 
 
 def run_parallel_flow(topic):
+    bus, workflow_task = create_network_bus(topic)
+    bus.update_task_status(
+        workflow_task.task_id,
+        TaskStatus.WORKING,
+        sender="Supervisor Agent",
+        content="Parallel workflow started.",
+    )
 
     with ThreadPoolExecutor() as executor:
 
@@ -73,16 +82,51 @@ def run_parallel_flow(topic):
             topic
         )
 
-        execution_future = executor.submit(
-            run_execution_flow,
-            topic
+        research_result = research_future.result()
+        bus.send_message(
+            "Research Agent",
+            "Execution Agent",
+            str(research_result),
+            message_type=MessageType.TASK_RESPONSE,
+            task_id=workflow_task.task_id,
+            status=TaskStatus.WORKING,
+            metadata={"phase": "parallel_research"},
         )
 
-        research_result = research_future.result()
-
         planning_result = planning_future.result()
+        bus.send_message(
+            "Planning Agent",
+            "Execution Agent",
+            str(planning_result),
+            message_type=MessageType.TASK_RESPONSE,
+            task_id=workflow_task.task_id,
+            status=TaskStatus.WORKING,
+            metadata={"phase": "parallel_planning"},
+        )
 
-        execution_result = execution_future.result()
+    execution_result = run_execution_flow(
+        f"""
+        Topic: {topic}
+
+        A2A Context:
+        {inbox_context(bus, "Execution Agent")}
+        """
+    )
+    bus.send_message(
+        "Execution Agent",
+        "Supervisor Agent",
+        str(execution_result),
+        message_type=MessageType.TASK_RESPONSE,
+        task_id=workflow_task.task_id,
+        status=TaskStatus.COMPLETED,
+        metadata={"phase": "parallel_execution"},
+    )
+    bus.update_task_status(
+        workflow_task.task_id,
+        TaskStatus.COMPLETED,
+        sender="Supervisor Agent",
+        content="Parallel workflow completed.",
+    )
 
     final_result = f"""
 
@@ -105,6 +149,20 @@ EXECUTION RESULT
 ==============================
 
 {execution_result}
+
+
+==============================
+A2A TASK SNAPSHOT
+==============================
+
+{bus.task_snapshot()}
+
+
+==============================
+A2A MESSAGE COUNT
+==============================
+
+{len(bus.get_messages())}
 
 """
 

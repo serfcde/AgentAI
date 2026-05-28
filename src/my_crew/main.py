@@ -1,11 +1,11 @@
-from my_crew.workflows.network_flow import run_network_flow
+from my_crew.workflows.workflow_router import choose_workflow
 
 
 def main():
 
-    result = run_network_flow()
+    topic = input("Enter Topic: ")
 
-    print("\nFINAL RESULT:\n")
+    result = choose_workflow(topic)
 
     print(result)
 

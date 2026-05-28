@@ -1,50 +1,17 @@
-from crewai import Agent
+from my_crew.agents.factory import create_agent_from_config
 
-from my_crew.config.llm import llm
+def decide_workflow(topic):
 
-from my_crew.tools.memory_tool import memory_tool
-from my_crew.tools.notification_tool import notification_tool
-from my_crew.tools.logger_tool import logger_tool
+    topic = topic.lower()
+
+    if "analysis" in topic:
+        return "hierarchical"
+
+    elif "multiple" in topic:
+        return "parallel"
+
+    return "network"
 
 
-def create_supervisor_agent():
-
-    return Agent(
-        role="Supervisor Agent",
-
-        goal="""
-        Coordinate agent workflows,
-        manage delegation,
-        monitor communication,
-        and ensure successful
-        task completion.
-        """,
-
-        backstory="""
-        You are a senior AI orchestration supervisor.
-
-        You specialize in:
-        - multi-agent coordination
-        - workflow supervision
-        - delegation strategies
-        - hierarchical AI systems
-        - agent communication
-        - distributed orchestration
-
-        You ensure all agents collaborate
-        efficiently using shared memory
-        and communication systems.
-        """,
-
-        verbose=True,
-
-        allow_delegation=True,
-
-        tools=[
-            memory_tool,
-            notification_tool,
-            logger_tool
-        ],
-
-        llm=llm
-    )
+def create_supervisor_agent(is_manager: bool = False):
+    return create_agent_from_config("supervisor_agent", is_manager=is_manager)
