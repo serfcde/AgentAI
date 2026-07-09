@@ -4,6 +4,7 @@ from typing import Any
 
 from my_crew.a2a.communication import CommunicationBus
 from my_crew.a2a.message import MessageType, TaskStatus
+from my_crew.agents.llm_judge import LLMCaller, review_phase_output
 
 
 class SupervisorAction(str, Enum):
@@ -48,11 +49,15 @@ class SupervisorController:
         task_id: str,
         max_retries_per_phase: int = 1,
         min_output_chars: int = 120,
+        topic: str = "",
+        llm_judge: LLMCaller | None = None,
     ):
         self.bus = bus
         self.task_id = task_id
         self.max_retries_per_phase = max_retries_per_phase
         self.min_output_chars = min_output_chars
+        self.topic = topic
+        self.llm_judge = llm_judge
         self.retry_counts: dict[str, int] = {}
         self.decisions: list[SupervisorDecision] = []
 
@@ -65,6 +70,36 @@ class SupervisorController:
         )
 
     def evaluate_phase_output(
+        self,
+        phase: str,
+        output: str,
+        default_next_phase: str | None,
+        target_agent: str | None,
+    ) -> SupervisorDecision:
+        if len(output.strip()) < self.min_output_chars:
+            return self._retry_or_fail(
+                phase=phase,
+                reason="Output is too short to satisfy completion criteria.",
+                target_agent=target_agent,
+            )
+
+        review = review_phase_output(phase, self.topic, output, self.llm_judge)
+        if review is not None:
+            return self._decision_from_review(
+                review=review,
+                phase=phase,
+                default_next_phase=default_next_phase,
+                target_agent=target_agent,
+            )
+
+        return self._heuristic_decision(
+            phase=phase,
+            output=output,
+            default_next_phase=default_next_phase,
+            target_agent=target_agent,
+        )
+
+    def _heuristic_decision(
         self,
         phase: str,
         output: str,
@@ -88,13 +123,6 @@ class SupervisorController:
                 target_agent=target_agent,
             )
 
-        if len(output.strip()) < self.min_output_chars:
-            return self._retry_or_fail(
-                phase=phase,
-                reason="Output is too short to satisfy completion criteria.",
-                target_agent=target_agent,
-            )
-
         if phase == "validation":
             return self._evaluate_validation(normalized)
 
@@ -105,6 +133,61 @@ class SupervisorController:
             next_phase=default_next_phase,
             target_agent=target_agent,
             retry_count=self.retry_counts.get(phase, 0),
+        )
+
+    def _decision_from_review(
+        self,
+        review: dict[str, Any],
+        phase: str,
+        default_next_phase: str | None,
+        target_agent: str | None,
+    ) -> SupervisorDecision:
+        feedback = review["feedback"] or "No feedback provided."
+
+        if review["verdict"] == "fail":
+            if phase == "execution":
+                return self._reassign_or_fail(
+                    phase=phase,
+                    reason=f"LLM review failed execution output: {feedback}",
+                    next_phase="planning",
+                    target_agent="Planning Agent",
+                )
+
+            return self._retry_or_fail(
+                phase=phase,
+                reason=f"LLM review rejected the output: {feedback}",
+                target_agent=target_agent,
+            )
+
+        if phase == "validation":
+            if review["needs_improvement"]:
+                return self._validation_improvement_decision(
+                    f"LLM review requested improvements: {feedback}"
+                )
+
+            return SupervisorDecision(
+                action=SupervisorAction.COMPLETE,
+                phase=phase,
+                reason=f"LLM review approved the final output: {feedback}",
+                retry_count=self.retry_counts.get("validation_loop", 0),
+                metadata={"review": "llm"},
+            )
+
+        if review["needs_improvement"]:
+            return self._retry_or_fail(
+                phase=phase,
+                reason=f"LLM review requested improvements: {feedback}",
+                target_agent=target_agent,
+            )
+
+        return SupervisorDecision(
+            action=SupervisorAction.CONTINUE,
+            phase=phase,
+            reason=f"LLM review passed the output: {feedback}",
+            next_phase=default_next_phase,
+            target_agent=target_agent,
+            retry_count=self.retry_counts.get(phase, 0),
+            metadata={"review": "llm"},
         )
 
     def record_decision(self, decision: SupervisorDecision) -> None:
@@ -153,24 +236,8 @@ class SupervisorController:
 
     def _evaluate_validation(self, normalized_output: str) -> SupervisorDecision:
         if self._requests_improvement(normalized_output):
-            retry_count = self.retry_counts.get("validation_loop", 0)
-            if retry_count < self.max_retries_per_phase:
-                self.retry_counts["validation_loop"] = retry_count + 1
-                return SupervisorDecision(
-                    action=SupervisorAction.RETRY,
-                    phase="validation",
-                    reason="Validator requested improvements; restarting from research.",
-                    next_phase="research",
-                    target_agent="Research Agent",
-                    retry_count=retry_count + 1,
-                    metadata={"retry_scope": "full_network"},
-                )
-
-            return SupervisorDecision(
-                action=SupervisorAction.FAIL,
-                phase="validation",
-                reason="Validator still requested improvements after retry limit.",
-                retry_count=retry_count,
+            return self._validation_improvement_decision(
+                "Validator requested improvements; restarting from research."
             )
 
         return SupervisorDecision(
@@ -178,6 +245,27 @@ class SupervisorController:
             phase="validation",
             reason="Validation output indicates workflow completion.",
             retry_count=self.retry_counts.get("validation_loop", 0),
+        )
+
+    def _validation_improvement_decision(self, reason: str) -> SupervisorDecision:
+        retry_count = self.retry_counts.get("validation_loop", 0)
+        if retry_count < self.max_retries_per_phase:
+            self.retry_counts["validation_loop"] = retry_count + 1
+            return SupervisorDecision(
+                action=SupervisorAction.RETRY,
+                phase="validation",
+                reason=reason,
+                next_phase="research",
+                target_agent="Research Agent",
+                retry_count=retry_count + 1,
+                metadata={"retry_scope": "full_network"},
+            )
+
+        return SupervisorDecision(
+            action=SupervisorAction.FAIL,
+            phase="validation",
+            reason="Validator still requested improvements after retry limit.",
+            retry_count=retry_count,
         )
 
     def _retry_or_fail(

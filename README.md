@@ -1,8 +1,8 @@
 # Production-Style CrewAI Multi-Agent Workflow
 
-This project implements a modular CrewAI workflow with five agents, seven tools,
-YAML-backed agent/task configuration, A2A-style inter-agent communication, and
-supervisor-controlled orchestration.
+A modular CrewAI workflow with five agents, seven tools, YAML-backed
+agent/task configuration, A2A-style inter-agent communication, and
+supervisor-controlled orchestration — running fully locally on Ollama.
 
 The app supports three workflow patterns:
 
@@ -10,27 +10,36 @@ The app supports three workflow patterns:
 - `hierarchical`: CrewAI manager/supervisor pattern.
 - `parallel`: research and planning run concurrently before execution.
 
+Workflow routing and supervisor phase reviews are **LLM-judged with
+structured JSON output**, and fall back to deterministic keyword heuristics
+whenever the LLM is disabled, unreachable, or returns unparseable output.
+
 The default LLM backend is Ollama with `llama3.1`.
 
 ## Project Structure
 
 ```text
 .
+├── .github/workflows/ci.yml  # Lint/compile + pytest on every push
 ├── docs/
 │   └── workflow-graph.md
 ├── src/my_crew/
 │   ├── a2a/                  # A2A messages, protocol, task lifecycle, bus
-│   ├── agents/               # YAML-backed agent factories and supervisor
+│   ├── agents/               # YAML-backed agent factories, supervisor, LLM judge
 │   ├── config/               # agents.yaml, tasks.yaml, LLM config
 │   ├── tasks/                # YAML-backed task factories
 │   ├── tools/                # CrewAI tools
+│   ├── utils/                # Logging
 │   ├── workflows/            # Network, hierarchical, parallel, router
 │   ├── crew.py
-│   └── main.py
+│   ├── demo_crew.py          # Manual all-agents demo (requires Ollama)
+│   └── main.py               # CLI entry point
+├── tests/                    # Pytest suite (no LLM required)
 ├── Dockerfile
 ├── docker-compose.yml
-├── pyproject.toml
-├── requirements.txt
+├── pyproject.toml            # Single source of truth for dependencies
+├── requirements.txt          # Thin pointer: -e .[dev]
+├── LICENSE
 └── README.md
 ```
 
@@ -76,6 +85,31 @@ The A2A layer includes:
 The network workflow uses `SupervisorController` to inspect phase outputs and
 decide whether to continue, retry, reassign, fail, or complete.
 
+### LLM-judged supervision with deterministic fallback
+
+For each completed phase, the supervisor asks the LLM for a structured JSON
+review (`verdict`, `needs_improvement`, `feedback`) via
+`src/my_crew/agents/llm_judge.py`:
+
+- `fail` verdicts trigger a retry (or reassignment to planning when the
+  execution phase fails).
+- `needs_improvement` on validation restarts the workflow from research
+  (bounded by the retry limit); on other phases it retries that phase with the
+  feedback injected into the next prompt.
+- If the LLM is disabled, unreachable, or returns unparseable output, the
+  supervisor falls back to deterministic keyword heuristics, so the workflow
+  never stalls on a broken judge.
+
+Topic-to-workflow routing works the same way: LLM classification first,
+keyword heuristics as fallback.
+
+Both judges can be disabled via environment variables:
+
+```text
+MY_CREW_LLM_SUPERVISOR=0   # heuristic-only phase reviews
+MY_CREW_LLM_ROUTING=0      # keyword-only workflow routing
+```
+
 ## Workflow Graph
 
 The full graph is also available at `docs/workflow-graph.md`.
@@ -83,9 +117,9 @@ The full graph is also available at `docs/workflow-graph.md`.
 ```mermaid
 flowchart TD
     User[User Topic] --> Router[Workflow Router]
-    Router -->|default| Network[Network Workflow]
-    Router -->|topic contains analysis| Hierarchical[Hierarchical Workflow]
-    Router -->|topic contains multiple| Parallel[Parallel Workflow]
+    Router -->|LLM classification / keyword fallback| Network[Network Workflow]
+    Router -->|analysis-style topics| Hierarchical[Hierarchical Workflow]
+    Router -->|multi-subtopic topics| Parallel[Parallel Workflow]
 
     subgraph NetworkFlow[Supervisor-Controlled Network Flow]
         NStart[Create A2A Task] --> R[Research Agent]
@@ -134,12 +168,11 @@ python3 -m venv venv
 source venv/bin/activate
 ```
 
-Install dependencies:
+Install the project with dev dependencies:
 
 ```bash
 pip install --upgrade pip
-pip install -r requirements.txt
-pip install -e .
+pip install -e ".[dev]"
 ```
 
 Start Ollama in another terminal:
@@ -154,15 +187,26 @@ Pull the model:
 ollama pull llama3.1
 ```
 
-Run the app:
+## Usage
+
+Run interactively (prompts for a topic):
 
 ```bash
-PYTHONPATH=src python -m my_crew.main
+my-crew
 ```
 
-Then enter a topic when prompted.
+Or non-interactively with explicit options:
 
-Routing examples:
+```bash
+my-crew --topic "Future of AI Agents"
+my-crew --topic "analysis of agent orchestration" --workflow hierarchical
+my-crew --topic "quick check" --no-report
+```
+
+Each run saves the full result as a Markdown report under `reports/`.
+
+Routing examples (keyword fallback shown; the LLM router may choose
+differently based on topic semantics):
 
 - `Future of AI Agents` -> network workflow
 - `analysis of agent orchestration` -> hierarchical workflow
@@ -213,6 +257,9 @@ The app uses these environment variables:
 ```text
 OLLAMA_MODEL=llama3.1
 OLLAMA_BASE_URL=http://localhost:11434
+MY_CREW_LLM_SUPERVISOR=1   # set to 0 for heuristic-only supervision
+MY_CREW_LLM_ROUTING=1      # set to 0 for keyword-only routing
+MY_CREW_LOG_LEVEL=INFO
 ```
 
 Inside Docker Compose, `OLLAMA_BASE_URL` is set to:
@@ -228,100 +275,18 @@ src/my_crew/config/agents.yaml
 src/my_crew/config/tasks.yaml
 ```
 
-## Verification Commands
+## Testing
 
-Compile the source tree:
-
-```bash
-source venv/bin/activate
-python -m compileall src/my_crew
-```
-
-Validate YAML-backed agent/task creation:
+The unit test suite covers the supervisor controller (heuristic and
+LLM-judged paths), the A2A communication bus and protocol, workflow routing,
+and YAML/tool configuration — no Ollama or network access required:
 
 ```bash
-PYTHONPATH=src python - <<'PY'
-from my_crew.config.loader import load_yaml_config
-from my_crew.agents.researcher import create_research_agent
-from my_crew.agents.supervisor import create_supervisor_agent
-from my_crew.tasks.planning_task import create_planning_task
-
-agents = load_yaml_config("agents.yaml")
-tasks = load_yaml_config("tasks.yaml")
-research = create_research_agent()
-manager = create_supervisor_agent(is_manager=True)
-task = create_planning_task(
-    research,
-    "Future of AI Agents",
-    "Sample research context",
-)
-
-print("agents:", sorted(agents))
-print("tasks:", sorted(tasks))
-print("research role:", research.role)
-print("research tools:", len(research.tools))
-print("manager tools:", len(manager.tools))
-print("topic injected:", "Future of AI Agents" in task.description)
-print("context injected:", "Sample research context" in task.description)
-PY
+pytest
 ```
 
-Validate supervisor decisions without running the LLM:
-
-```bash
-PYTHONPATH=src python - <<'PY'
-from my_crew.a2a.communication import CommunicationBus
-from my_crew.a2a.message import AgentCard
-from my_crew.agents.supervisor_controller import SupervisorController
-
-bus = CommunicationBus()
-for name in [
-    "Supervisor Agent",
-    "Research Agent",
-    "Planning Agent",
-    "Execution Agent",
-    "Validation Agent",
-]:
-    bus.register_agent(AgentCard(agent_id=name, name=name, description=name))
-
-task = bus.create_task("supervisor test", "Supervisor Agent")
-supervisor = SupervisorController(
-    bus=bus,
-    task_id=task.task_id,
-    max_retries_per_phase=1,
-    min_output_chars=10,
-)
-
-print(supervisor.evaluate_phase_output(
-    "research",
-    "This is a good research output with enough detail.",
-    "planning",
-    "Planning Agent",
-).action.value)
-
-print(supervisor.evaluate_phase_output(
-    "execution",
-    "Error: failed execution",
-    "validation",
-    "Validation Agent",
-).action.value)
-
-print(supervisor.evaluate_phase_output(
-    "validation",
-    "needs improvement in scope and completeness",
-    None,
-    None,
-).next_phase)
-PY
-```
-
-Expected output:
-
-```text
-continue
-reassign
-research
-```
+The same suite runs in GitHub Actions on every push and pull request
+(`.github/workflows/ci.yml`).
 
 Validate Docker Compose syntax:
 
@@ -348,3 +313,5 @@ A2A MESSAGE COUNT
 - Full execution requires Ollama and the configured model.
 - Web search requires network access.
 - The Docker setup pulls `llama3.1` into the `ollama-data` volume.
+- `src/my_crew/demo_crew.py` is a manual all-agents demo:
+  `PYTHONPATH=src python -m my_crew.demo_crew`.

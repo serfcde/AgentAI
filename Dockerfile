@@ -13,12 +13,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt pyproject.toml README.md ./
+COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 
 RUN pip install --upgrade pip \
-    && pip install -r requirements.txt \
-    && pip install -e . \
+    && pip install . \
     && useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app
 

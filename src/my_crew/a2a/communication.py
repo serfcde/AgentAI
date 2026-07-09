@@ -13,7 +13,10 @@ from my_crew.a2a.message import (
     TaskStatus,
 )
 from my_crew.a2a.protocol import A2AProtocol
+from my_crew.utils.logger import get_logger
 
+
+logger = get_logger("my_crew.a2a")
 
 Subscriber = Callable[[AgentMessage], None]
 
@@ -257,7 +260,7 @@ class CommunicationBus:
             subscribers.extend(self.subscriptions.get(self.BROADCAST, []))
             subscribers.extend(self.subscriptions.get(message.message_type.value, []))
 
-        print(message)
+        logger.info(str(message))
 
         for callback in subscribers:
             callback(message)

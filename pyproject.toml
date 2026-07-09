@@ -4,30 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "my-crew"
-version = "0.1.0"
+version = "0.2.0"
 description = "Production-style CrewAI multi-agent workflow with A2A-style communication."
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.11"
 authors = [
-  { name = "AgentAI" }
+  { name = "Divya Rawat" }
 ]
 dependencies = [
-  "crewai",
-  "crewai-tools",
-  "langchain",
-  "langchain-community",
-  "langchain-core",
-  "langchain-ollama",
-  "ollama",
-  "python-dotenv",
-  "pyyaml",
-  "aiohttp",
-  "requests",
-  "pydantic",
-  "rich",
-  "loguru",
-  "duckduckgo-search",
-  "tqdm"
+  "crewai==1.14.5",
+  "duckduckgo-search==8.1.1",
+  "python-dotenv==1.2.2",
+  "pyyaml==6.0.3",
+  "requests==2.34.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.1.1",
 ]
 
 [project.scripts]
@@ -41,4 +36,4 @@ my_crew = ["config/*.yaml"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
-testpaths = ["src/my_crew"]
+testpaths = ["tests"]

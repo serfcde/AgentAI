@@ -3,6 +3,7 @@ from crewai import Crew, Process
 from my_crew.a2a.communication import CommunicationBus
 from my_crew.a2a.message import AgentCapability, AgentCard, MessageType, TaskStatus
 
+from my_crew.agents.llm_judge import get_default_llm_caller
 from my_crew.agents.researcher import create_research_agent
 from my_crew.agents.planner import create_planner_agent
 from my_crew.agents.executor import create_executor_agent
@@ -131,6 +132,8 @@ def run_network_flow(topic):
         bus=bus,
         task_id=workflow_task.task_id,
         max_retries_per_phase=1,
+        topic=topic,
+        llm_judge=get_default_llm_caller("MY_CREW_LLM_SUPERVISOR"),
     )
 
     agents = {
