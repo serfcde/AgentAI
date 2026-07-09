@@ -1,112 +1,190 @@
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+"""Google A2A protocol types (official ``a2a-sdk``) plus local conventions.
+
+All wire objects (``AgentCard``, ``Message``, ``Task``, ...) are the official
+protobuf types from the A2A v1 specification. The A2A protocol addresses
+agents at the transport level, so for the in-process bus the sender,
+receiver, and message kind travel in ``Message.metadata`` under the
+``META_*`` keys defined here.
+"""
+
 from enum import Enum
 from typing import Any
 from uuid import uuid4
 
+from a2a.types import (
+    AgentCapabilities,
+    AgentCard,
+    AgentInterface,
+    AgentSkill,
+    Artifact,
+    Message,
+    Part,
+    Role,
+    Task,
+    TaskState,
+    TaskStatus,
+)
+from google.protobuf import struct_pb2
+from google.protobuf.json_format import MessageToDict
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+
+__all__ = [
+    "AgentCapabilities",
+    "AgentCard",
+    "AgentInterface",
+    "AgentSkill",
+    "Artifact",
+    "Message",
+    "MessageKind",
+    "Part",
+    "Role",
+    "Task",
+    "TaskState",
+    "TaskStatus",
+    "build_agent_card",
+    "describe_message",
+    "message_kind",
+    "message_meta",
+    "message_receiver",
+    "message_sender",
+    "message_text",
+    "new_agent_message",
+    "new_task",
+    "set_task_state",
+    "task_state_name",
+    "task_to_dict",
+    "to_struct",
+]
 
 
-class MessageType(str, Enum):
+class MessageKind(str, Enum):
+    """Local convention for classifying bus messages (stored in metadata)."""
+
     TASK_REQUEST = "task_request"
     TASK_RESPONSE = "task_response"
     STATUS_UPDATE = "status_update"
     EVENT = "event"
     STREAM_CHUNK = "stream_chunk"
-    ERROR = "error"
 
 
-class TaskStatus(str, Enum):
-    SUBMITTED = "submitted"
-    WORKING = "working"
-    INPUT_REQUIRED = "input_required"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELED = "canceled"
+META_SENDER = "sender"
+META_RECEIVER = "receiver"
+META_KIND = "kind"
+META_FINAL = "final"
 
 
-@dataclass(frozen=True)
-class AgentCapability:
-    name: str
-    description: str
-    input_modes: list[str] = field(default_factory=lambda: ["text/plain"])
-    output_modes: list[str] = field(default_factory=lambda: ["text/plain"])
-    streaming: bool = False
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+def to_struct(data: dict[str, Any] | None) -> struct_pb2.Struct:
+    struct = struct_pb2.Struct()
+    if data:
+        struct.update(data)
+    return struct
 
 
-@dataclass(frozen=True)
-class AgentCard:
-    agent_id: str
-    name: str
-    description: str
-    version: str = "1.0.0"
-    endpoint: str | None = None
-    capabilities: list[AgentCapability] = field(default_factory=list)
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        data = asdict(self)
-        data["capabilities"] = [
-            capability.to_dict() for capability in self.capabilities
-        ]
-        return data
-
-
-@dataclass
-class A2ATask:
-    task_id: str
-    title: str
-    owner: str
-    status: TaskStatus = TaskStatus.SUBMITTED
-    created_at: str = field(default_factory=utc_now)
-    updated_at: str = field(default_factory=utc_now)
-    messages: list[str] = field(default_factory=list)
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-    def add_message(self, message_id: str) -> None:
-        self.messages.append(message_id)
-        self.updated_at = utc_now()
-
-    def set_status(self, status: TaskStatus) -> None:
-        self.status = status
-        self.updated_at = utc_now()
-
-    def to_dict(self) -> dict[str, Any]:
-        data = asdict(self)
-        data["status"] = self.status.value
-        return data
+def new_agent_message(
+    sender: str,
+    receiver: str,
+    content: str,
+    kind: MessageKind = MessageKind.TASK_REQUEST,
+    task_id: str | None = None,
+    context_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    final: bool = True,
+) -> Message:
+    meta = {
+        META_SENDER: sender,
+        META_RECEIVER: receiver,
+        META_KIND: kind.value,
+        META_FINAL: final,
+        **(metadata or {}),
+    }
+    return Message(
+        message_id=str(uuid4()),
+        task_id=task_id or "",
+        context_id=context_id or "",
+        role=Role.ROLE_AGENT,
+        parts=[Part(text=content)],
+        metadata=to_struct(meta),
+    )
 
 
-@dataclass(frozen=True)
-class AgentMessage:
-    sender: str
-    receiver: str
-    content: str
-    message_type: MessageType = MessageType.TASK_REQUEST
-    task_id: str | None = None
-    message_id: str = field(default_factory=lambda: str(uuid4()))
-    correlation_id: str | None = None
-    timestamp: str = field(default_factory=utc_now)
-    status: TaskStatus | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
-    final: bool = True
+def message_text(message: Message) -> str:
+    return "\n".join(part.text for part in message.parts if part.text)
 
-    def to_dict(self) -> dict[str, Any]:
-        data = asdict(self)
-        data["message_type"] = self.message_type.value
-        data["status"] = self.status.value if self.status else None
-        return data
 
-    def __str__(self) -> str:
-        status = f" status={self.status.value}" if self.status else ""
-        task = f" task={self.task_id}" if self.task_id else ""
-        return (
-            f"\n[{self.message_type.value}{status}{task}] "
-            f"{self.sender} -> {self.receiver}\n"
-            f"{self.content}\n"
-        )
+def message_meta(message: Message, key: str, default: Any = None) -> Any:
+    return dict(message.metadata).get(key, default)
+
+
+def message_sender(message: Message) -> str:
+    return str(message_meta(message, META_SENDER, ""))
+
+
+def message_receiver(message: Message) -> str:
+    return str(message_meta(message, META_RECEIVER, ""))
+
+
+def message_kind(message: Message) -> str:
+    return str(message_meta(message, META_KIND, MessageKind.TASK_REQUEST.value))
+
+
+def describe_message(message: Message) -> str:
+    text = message_text(message)
+    if len(text) > 200:
+        text = f"{text[:200]}..."
+    return (
+        f"[{message_kind(message)}] "
+        f"{message_sender(message)} -> {message_receiver(message)}: {text}"
+    )
+
+
+def build_agent_card(
+    name: str,
+    description: str,
+    skill_id: str,
+    skill_description: str,
+    streaming: bool = False,
+) -> AgentCard:
+    return AgentCard(
+        name=name,
+        description=description,
+        version="1.0.0",
+        capabilities=AgentCapabilities(streaming=streaming),
+        default_input_modes=["text/plain"],
+        default_output_modes=["text/plain"],
+        skills=[
+            AgentSkill(
+                id=skill_id,
+                name=skill_id,
+                description=skill_description,
+                tags=[skill_id],
+            )
+        ],
+        supported_interfaces=[AgentInterface(url=f"local://agents/{skill_id}")],
+    )
+
+
+def new_task(
+    title: str,
+    owner: str,
+    metadata: dict[str, Any] | None = None,
+) -> Task:
+    task = Task(
+        id=str(uuid4()),
+        context_id=str(uuid4()),
+        metadata=to_struct({"title": title, "owner": owner, **(metadata or {})}),
+    )
+    set_task_state(task, TaskState.TASK_STATE_SUBMITTED)
+    return task
+
+
+def set_task_state(task: Task, state: "TaskState") -> None:
+    task.status.state = state
+    task.status.timestamp.GetCurrentTime()
+
+
+def task_state_name(state: "TaskState") -> str:
+    return TaskState.Name(state).removeprefix("TASK_STATE_").lower()
+
+
+def task_to_dict(task: Task) -> dict[str, Any]:
+    return MessageToDict(task)

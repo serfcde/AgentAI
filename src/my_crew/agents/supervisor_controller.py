@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any
 
 from my_crew.a2a.communication import CommunicationBus
-from my_crew.a2a.message import MessageType, TaskStatus
+from my_crew.a2a.message import MessageKind, TaskState
 from my_crew.agents.llm_judge import LLMCaller, review_phase_output
 
 
@@ -64,7 +64,7 @@ class SupervisorController:
     def start_phase(self, phase: str, agent_id: str) -> None:
         self.bus.update_task_status(
             self.task_id,
-            TaskStatus.WORKING,
+            TaskState.TASK_STATE_WORKING,
             sender="Supervisor Agent",
             content=f"Starting phase '{phase}' with {agent_id}.",
         )
@@ -193,19 +193,12 @@ class SupervisorController:
     def record_decision(self, decision: SupervisorDecision) -> None:
         self.decisions.append(decision)
 
-        status = TaskStatus.WORKING
-        if decision.action == SupervisorAction.COMPLETE:
-            status = TaskStatus.COMPLETED
-        elif decision.action == SupervisorAction.FAIL:
-            status = TaskStatus.FAILED
-
         self.bus.send_message(
             sender="Supervisor Agent",
             receiver=decision.target_agent or CommunicationBus.BROADCAST,
             content=decision.to_message(),
-            message_type=MessageType.STATUS_UPDATE,
+            kind=MessageKind.STATUS_UPDATE,
             task_id=self.task_id,
-            status=status,
             metadata={
                 "phase": decision.phase,
                 "action": decision.action.value,

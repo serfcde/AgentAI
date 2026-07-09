@@ -1,8 +1,9 @@
 # Production-Style CrewAI Multi-Agent Workflow
 
 A modular CrewAI workflow with five agents, seven tools, YAML-backed
-agent/task configuration, A2A-style inter-agent communication, and
-supervisor-controlled orchestration — running fully locally on Ollama.
+agent/task configuration, **Google A2A protocol** inter-agent communication
+(official `a2a-sdk` types), and supervisor-controlled orchestration — running
+fully locally on Ollama.
 
 The app supports three workflow patterns:
 
@@ -33,6 +34,7 @@ The default LLM backend is Ollama with `llama3.1`.
 │   ├── workflows/            # Network, hierarchical, parallel, router
 │   ├── crew.py
 │   ├── demo_crew.py          # Manual all-agents demo (requires Ollama)
+│   ├── evaluation.py         # my-crew-eval: compare workflow patterns
 │   └── main.py               # CLI entry point
 ├── tests/                    # Pytest suite (no LLM required)
 ├── Dockerfile
@@ -72,15 +74,22 @@ workflow.
 
 ## A2A And Supervision
 
-The A2A layer includes:
+Inter-agent communication uses the **official Google A2A protocol types**
+from [`a2a-sdk`](https://pypi.org/project/a2a-sdk/) (A2A v1 specification):
 
-- agent cards and capabilities
-- protocol-level message validation
-- per-agent inboxes
-- task lifecycle/status updates
-- pub-sub/broadcast support
-- async dispatch support
-- streaming chunk support
+- `AgentCard` with `AgentSkill`/`AgentCapabilities` per agent
+- `Message` with `Part`s, roles, and task/context IDs
+- `Task` with spec `TaskState` lifecycle (submitted/working/completed/failed/...)
+  and full message history
+- wire serialization via the spec's canonical JSON mapping, using the official
+  `SendMessageRequest` envelope — payloads are interoperable with any A2A v1
+  implementation
+
+`CommunicationBus` (`src/my_crew/a2a/communication.py`) is the local
+in-process transport that stands in for HTTP/gRPC: it routes A2A messages to
+per-agent inboxes and adds pub-sub, broadcast, async dispatch, and streaming
+chunk support. Because A2A addresses agents at the transport level,
+sender/receiver metadata travels in `Message.metadata`.
 
 The network workflow uses `SupervisorController` to inspect phase outputs and
 decide whether to continue, retry, reassign, fail, or complete.
@@ -205,6 +214,17 @@ my-crew --topic "quick check" --no-report
 
 Each run saves the full result as a Markdown report under `reports/`.
 
+### Comparing workflow patterns
+
+The evaluation harness runs the same topic through all three workflow
+patterns and compares duration, output size, and an LLM quality score
+(1-10), then writes a Markdown comparison report to `reports/eval-*.md`:
+
+```bash
+my-crew-eval --topic "Future of AI Agents"
+my-crew-eval --topic "..." --workflows network parallel
+```
+
 Routing examples (keyword fallback shown; the LLM router may choose
 differently based on topic semantics):
 
@@ -259,6 +279,7 @@ OLLAMA_MODEL=llama3.1
 OLLAMA_BASE_URL=http://localhost:11434
 MY_CREW_LLM_SUPERVISOR=1   # set to 0 for heuristic-only supervision
 MY_CREW_LLM_ROUTING=1      # set to 0 for keyword-only routing
+MY_CREW_LLM_SCORING=1      # set to 0 to skip LLM scores in my-crew-eval
 MY_CREW_LOG_LEVEL=INFO
 ```
 
@@ -285,8 +306,15 @@ and YAML/tool configuration — no Ollama or network access required:
 pytest
 ```
 
-The same suite runs in GitHub Actions on every push and pull request
-(`.github/workflows/ci.yml`).
+### Continuous integration (GitHub Actions)
+
+`.github/workflows/ci.yml` runs automatically on every push to `main` and on
+every pull request. GitHub spins up an Ubuntu runner that installs Python
+3.11, installs the project (`pip install -e ".[dev]"`, with pip caching),
+byte-compiles the source tree, and runs the pytest suite with the LLM judges
+disabled (`MY_CREW_LLM_SUPERVISOR=0`, `MY_CREW_LLM_ROUTING=0`) so no Ollama
+instance is needed. A failing test blocks the green checkmark on the commit
+or PR.
 
 Validate Docker Compose syntax:
 

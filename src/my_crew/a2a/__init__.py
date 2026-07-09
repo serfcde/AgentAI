@@ -1,10 +1,12 @@
 from my_crew.a2a.communication import CommunicationBus
 from my_crew.a2a.message import (
-    A2ATask,
-    AgentCapability,
+    AgentCapabilities,
     AgentCard,
-    AgentMessage,
-    MessageType,
+    AgentSkill,
+    Message,
+    MessageKind,
+    Task,
+    TaskState,
     TaskStatus,
 )
 from my_crew.a2a.protocol import A2AProtocol, A2AProtocolError
@@ -12,11 +14,13 @@ from my_crew.a2a.protocol import A2AProtocol, A2AProtocolError
 __all__ = [
     "A2AProtocol",
     "A2AProtocolError",
-    "A2ATask",
-    "AgentCapability",
+    "AgentCapabilities",
     "AgentCard",
-    "AgentMessage",
+    "AgentSkill",
     "CommunicationBus",
-    "MessageType",
+    "Message",
+    "MessageKind",
+    "Task",
+    "TaskState",
     "TaskStatus",
 ]

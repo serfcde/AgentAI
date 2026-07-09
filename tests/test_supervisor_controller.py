@@ -3,7 +3,7 @@ import json
 import pytest
 
 from my_crew.a2a.communication import CommunicationBus
-from my_crew.a2a.message import AgentCard, TaskStatus
+from my_crew.a2a.message import TaskState, build_agent_card
 from my_crew.agents.supervisor_controller import (
     SupervisorAction,
     SupervisorController,
@@ -28,11 +28,18 @@ GOOD_OUTPUT = (
 def make_controller(**kwargs) -> SupervisorController:
     bus = CommunicationBus()
     for name in AGENT_NAMES:
-        bus.register_agent(AgentCard(agent_id=name, name=name, description=name))
+        bus.register_agent(
+            build_agent_card(
+                name=name,
+                description=name,
+                skill_id=name.lower().replace(" ", "-"),
+                skill_description=name,
+            )
+        )
     task = bus.create_task("test workflow", "Supervisor Agent")
     return SupervisorController(
         bus=bus,
-        task_id=task.task_id,
+        task_id=task.id,
         max_retries_per_phase=1,
         **kwargs,
     )
@@ -205,4 +212,4 @@ class TestDecisionRecording:
         controller = make_controller()
         controller.start_phase("research", "Research Agent")
         task = controller.bus.get_task(controller.task_id)
-        assert task.status == TaskStatus.WORKING
+        assert task.status.state == TaskState.TASK_STATE_WORKING

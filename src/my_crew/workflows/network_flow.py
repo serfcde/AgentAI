@@ -1,7 +1,13 @@
 from crewai import Crew, Process
 
 from my_crew.a2a.communication import CommunicationBus
-from my_crew.a2a.message import AgentCapability, AgentCard, MessageType, TaskStatus
+from my_crew.a2a.message import (
+    MessageKind,
+    TaskState,
+    build_agent_card,
+    message_kind,
+    message_text,
+)
 
 from my_crew.agents.llm_judge import get_default_llm_caller
 from my_crew.agents.researcher import create_research_agent
@@ -21,66 +27,36 @@ from my_crew.tasks.validation_task import create_validation_task
 
 def build_agent_cards():
     return [
-        AgentCard(
-            agent_id="Supervisor Agent",
+        build_agent_card(
             name="Supervisor Agent",
             description="Coordinates workflow routing, lifecycle, and delegation.",
-            endpoint="local://agents/supervisor",
-            capabilities=[
-                AgentCapability(
-                    name="supervision",
-                    description="Coordinate agents and monitor workflow status.",
-                )
-            ],
+            skill_id="supervision",
+            skill_description="Coordinate agents and monitor workflow status.",
         ),
-        AgentCard(
-            agent_id="Research Agent",
+        build_agent_card(
             name="Research Agent",
             description="Researches topics and prepares structured findings.",
-            endpoint="local://agents/research",
-            capabilities=[
-                AgentCapability(
-                    name="research",
-                    description="Gather and summarize research context.",
-                    streaming=True,
-                )
-            ],
+            skill_id="research",
+            skill_description="Gather and summarize research context.",
+            streaming=True,
         ),
-        AgentCard(
-            agent_id="Planning Agent",
+        build_agent_card(
             name="Planning Agent",
             description="Turns research into phased execution plans.",
-            endpoint="local://agents/planning",
-            capabilities=[
-                AgentCapability(
-                    name="planning",
-                    description="Create execution plans with dependencies.",
-                )
-            ],
+            skill_id="planning",
+            skill_description="Create execution plans with dependencies.",
         ),
-        AgentCard(
-            agent_id="Execution Agent",
+        build_agent_card(
             name="Execution Agent",
             description="Produces implementation guidance and action steps.",
-            endpoint="local://agents/execution",
-            capabilities=[
-                AgentCapability(
-                    name="execution",
-                    description="Execute plans and produce operational output.",
-                )
-            ],
+            skill_id="execution",
+            skill_description="Execute plans and produce operational output.",
         ),
-        AgentCard(
-            agent_id="Validation Agent",
+        build_agent_card(
             name="Validation Agent",
             description="Reviews workflow output for quality and completeness.",
-            endpoint="local://agents/validation",
-            capabilities=[
-                AgentCapability(
-                    name="validation",
-                    description="Validate outputs and recommend improvements.",
-                )
-            ],
+            skill_id="validation",
+            skill_description="Validate outputs and recommend improvements.",
         ),
     ]
 
@@ -98,7 +74,7 @@ def create_network_bus(topic: str):
     bus.broadcast(
         sender="Supervisor Agent",
         content=f"Network workflow started for topic: {topic}",
-        task_id=workflow_task.task_id,
+        task_id=workflow_task.id,
     )
     return bus, workflow_task
 
@@ -106,9 +82,9 @@ def create_network_bus(topic: str):
 def inbox_context(bus: CommunicationBus, agent_id: str) -> str:
     messages = bus.receive_messages(agent_id)
     return "\n\n".join(
-        message.content
+        message_text(message)
         for message in messages
-        if message.message_type == MessageType.TASK_RESPONSE
+        if message_kind(message) == MessageKind.TASK_RESPONSE.value
     )
 
 
@@ -130,7 +106,7 @@ def run_network_flow(topic):
     bus, workflow_task = create_network_bus(topic)
     supervisor = SupervisorController(
         bus=bus,
-        task_id=workflow_task.task_id,
+        task_id=workflow_task.id,
         max_retries_per_phase=1,
         topic=topic,
         llm_judge=get_default_llm_caller("MY_CREW_LLM_SUPERVISOR"),
@@ -193,9 +169,8 @@ def run_network_flow(topic):
             agent_id,
             "Supervisor Agent",
             str(result),
-            message_type=MessageType.TASK_RESPONSE,
-            task_id=workflow_task.task_id,
-            status=TaskStatus.WORKING,
+            kind=MessageKind.TASK_RESPONSE,
+            task_id=workflow_task.id,
             metadata={"phase": current_phase, "handoff": "supervisor_review"},
         )
 
@@ -209,8 +184,8 @@ def run_network_flow(topic):
 
         if decision.action == SupervisorAction.COMPLETE:
             bus.update_task_status(
-                workflow_task.task_id,
-                TaskStatus.COMPLETED,
+                workflow_task.id,
+                TaskState.TASK_STATE_COMPLETED,
                 sender="Supervisor Agent",
                 content="Network workflow completed.",
             )
@@ -218,8 +193,8 @@ def run_network_flow(topic):
 
         if decision.action == SupervisorAction.FAIL:
             bus.update_task_status(
-                workflow_task.task_id,
-                TaskStatus.FAILED,
+                workflow_task.id,
+                TaskState.TASK_STATE_FAILED,
                 sender="Supervisor Agent",
                 content=decision.reason,
             )
@@ -230,9 +205,8 @@ def run_network_flow(topic):
                 agent_id,
                 decision.target_agent,
                 str(result),
-                message_type=MessageType.TASK_RESPONSE,
-                task_id=workflow_task.task_id,
-                status=TaskStatus.WORKING,
+                kind=MessageKind.TASK_RESPONSE,
+                task_id=workflow_task.id,
                 metadata={"phase": current_phase, "handoff": "approved"},
             )
             supervisor_feedback = ""

@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from crewai import Crew, Process
 
-from my_crew.a2a.message import MessageType, TaskStatus
+from my_crew.a2a.message import MessageKind, TaskState
 from my_crew.agents.researcher import create_research_agent
 from my_crew.agents.planner import create_planner_agent
 from my_crew.agents.executor import create_executor_agent
@@ -64,8 +64,8 @@ def run_execution_flow(topic):
 def run_parallel_flow(topic):
     bus, workflow_task = create_network_bus(topic)
     bus.update_task_status(
-        workflow_task.task_id,
-        TaskStatus.WORKING,
+        workflow_task.id,
+        TaskState.TASK_STATE_WORKING,
         sender="Supervisor Agent",
         content="Parallel workflow started.",
     )
@@ -87,9 +87,8 @@ def run_parallel_flow(topic):
             "Research Agent",
             "Execution Agent",
             str(research_result),
-            message_type=MessageType.TASK_RESPONSE,
-            task_id=workflow_task.task_id,
-            status=TaskStatus.WORKING,
+            kind=MessageKind.TASK_RESPONSE,
+            task_id=workflow_task.id,
             metadata={"phase": "parallel_research"},
         )
 
@@ -98,9 +97,8 @@ def run_parallel_flow(topic):
             "Planning Agent",
             "Execution Agent",
             str(planning_result),
-            message_type=MessageType.TASK_RESPONSE,
-            task_id=workflow_task.task_id,
-            status=TaskStatus.WORKING,
+            kind=MessageKind.TASK_RESPONSE,
+            task_id=workflow_task.id,
             metadata={"phase": "parallel_planning"},
         )
 
@@ -116,14 +114,13 @@ def run_parallel_flow(topic):
         "Execution Agent",
         "Supervisor Agent",
         str(execution_result),
-        message_type=MessageType.TASK_RESPONSE,
-        task_id=workflow_task.task_id,
-        status=TaskStatus.COMPLETED,
+        kind=MessageKind.TASK_RESPONSE,
+        task_id=workflow_task.id,
         metadata={"phase": "parallel_execution"},
     )
     bus.update_task_status(
-        workflow_task.task_id,
-        TaskStatus.COMPLETED,
+        workflow_task.id,
+        TaskState.TASK_STATE_COMPLETED,
         sender="Supervisor Agent",
         content="Parallel workflow completed.",
     )

@@ -13,6 +13,7 @@ authors = [
   { name = "Divya Rawat" }
 ]
 dependencies = [
+  "a2a-sdk==1.1.0",
   "crewai==1.14.5",
   "duckduckgo-search==8.1.1",
   "python-dotenv==1.2.2",
@@ -27,6 +28,7 @@ dev = [
 
 [project.scripts]
 my-crew = "my_crew.main:main"
+my-crew-eval = "my_crew.evaluation:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

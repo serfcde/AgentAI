@@ -3,14 +3,22 @@ from collections.abc import Callable
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
 from typing import Any
-from uuid import uuid4
 
 from my_crew.a2a.message import (
-    A2ATask,
     AgentCard,
-    AgentMessage,
-    MessageType,
-    TaskStatus,
+    Message,
+    MessageKind,
+    Task,
+    TaskState,
+    message_kind,
+    message_receiver,
+    message_sender,
+    describe_message,
+    new_agent_message,
+    new_task,
+    set_task_state,
+    task_state_name,
+    task_to_dict,
 )
 from my_crew.a2a.protocol import A2AProtocol
 from my_crew.utils.logger import get_logger
@@ -18,21 +26,26 @@ from my_crew.utils.logger import get_logger
 
 logger = get_logger("my_crew.a2a")
 
-Subscriber = Callable[[AgentMessage], None]
+Subscriber = Callable[[Message], None]
 
 
 class CommunicationBus:
-    """Thread-safe local A2A backbone with routing, inboxes, and pub-sub."""
+    """Thread-safe in-process transport for Google A2A protocol objects.
+
+    Cards, messages, and tasks are official A2A v1 protobuf types; this bus
+    provides local routing, per-agent inboxes, task lifecycle tracking, and
+    pub-sub in place of an HTTP/gRPC transport.
+    """
 
     BROADCAST = "*"
 
     def __init__(self, auto_start: bool = False):
         self.agent_cards: dict[str, AgentCard] = {}
-        self.inboxes: dict[str, deque[AgentMessage]] = defaultdict(deque)
-        self.messages: list[AgentMessage] = []
-        self.tasks: dict[str, A2ATask] = {}
+        self.inboxes: dict[str, deque[Message]] = defaultdict(deque)
+        self.messages: list[Message] = []
+        self.tasks: dict[str, Task] = {}
         self.subscriptions: dict[str, list[Subscriber]] = defaultdict(list)
-        self._dispatch_queue: Queue[AgentMessage] = Queue()
+        self._dispatch_queue: Queue[Message] = Queue()
         self._lock = Lock()
         self._stop_event = Event()
         self._dispatcher: Thread | None = None
@@ -60,53 +73,48 @@ class CommunicationBus:
     def register_agent(self, card: AgentCard) -> AgentCard:
         A2AProtocol.validate_agent_card(card)
         with self._lock:
-            self.agent_cards[card.agent_id] = card
-            self.inboxes.setdefault(card.agent_id, deque())
+            self.agent_cards[card.name] = card
+            self.inboxes.setdefault(card.name, deque())
         return card
 
     def list_agent_cards(self) -> list[AgentCard]:
         with self._lock:
             return list(self.agent_cards.values())
 
-    def get_agent_card(self, agent_id: str) -> AgentCard | None:
+    def get_agent_card(self, agent_name: str) -> AgentCard | None:
         with self._lock:
-            return self.agent_cards.get(agent_id)
+            return self.agent_cards.get(agent_name)
 
     def create_task(
         self,
         title: str,
         owner: str,
         metadata: dict[str, Any] | None = None,
-    ) -> A2ATask:
-        task = A2ATask(
-            task_id=str(uuid4()),
-            title=title,
-            owner=owner,
-            metadata=metadata or {},
-        )
+    ) -> Task:
+        task = new_task(title=title, owner=owner, metadata=metadata)
         with self._lock:
-            self.tasks[task.task_id] = task
+            self.tasks[task.id] = task
         return task
 
     def update_task_status(
         self,
         task_id: str,
-        status: TaskStatus,
+        state: "TaskState",
         sender: str = "system",
         receiver: str = BROADCAST,
         content: str | None = None,
-    ) -> AgentMessage:
+    ) -> Message:
         with self._lock:
             task = self.tasks[task_id]
-            task.set_status(status)
+            set_task_state(task, state)
 
         return self.send_message(
             sender=sender,
             receiver=receiver,
-            content=content or f"Task {task_id} is {status.value}.",
-            message_type=MessageType.STATUS_UPDATE,
+            content=content or f"Task {task_id} is {task_state_name(state)}.",
+            kind=MessageKind.STATUS_UPDATE,
             task_id=task_id,
-            status=status,
+            metadata={"state": task_state_name(state)},
         )
 
     def send_message(
@@ -114,23 +122,19 @@ class CommunicationBus:
         sender: str,
         receiver: str,
         content: str,
-        message_type: MessageType = MessageType.TASK_REQUEST,
+        kind: MessageKind = MessageKind.TASK_REQUEST,
         task_id: str | None = None,
-        correlation_id: str | None = None,
-        status: TaskStatus | None = None,
         metadata: dict[str, Any] | None = None,
         final: bool = True,
         async_dispatch: bool = False,
-    ) -> AgentMessage:
-        message = AgentMessage(
+    ) -> Message:
+        message = new_agent_message(
             sender=sender,
             receiver=receiver,
             content=content,
-            message_type=message_type,
+            kind=kind,
             task_id=task_id,
-            correlation_id=correlation_id,
-            status=status,
-            metadata=metadata or {},
+            metadata=metadata,
             final=final,
         )
         A2AProtocol.validate_message(message)
@@ -147,7 +151,7 @@ class CommunicationBus:
         self,
         serialized_message: str,
         async_dispatch: bool = False,
-    ) -> AgentMessage:
+    ) -> Message:
         message = A2AProtocol.deserialize_message(serialized_message)
         if async_dispatch:
             self.start()
@@ -160,15 +164,15 @@ class CommunicationBus:
         self,
         sender: str,
         content: str,
-        message_type: MessageType = MessageType.EVENT,
+        kind: MessageKind = MessageKind.EVENT,
         task_id: str | None = None,
         metadata: dict[str, Any] | None = None,
-    ) -> AgentMessage:
+    ) -> Message:
         return self.send_message(
             sender=sender,
             receiver=self.BROADCAST,
             content=content,
-            message_type=message_type,
+            kind=kind,
             task_id=task_id,
             metadata=metadata,
         )
@@ -180,7 +184,7 @@ class CommunicationBus:
         chunks: list[str],
         task_id: str | None = None,
         metadata: dict[str, Any] | None = None,
-    ) -> list[AgentMessage]:
+    ) -> list[Message]:
         messages = []
         for index, chunk in enumerate(chunks):
             messages.append(
@@ -188,7 +192,7 @@ class CommunicationBus:
                     sender=sender,
                     receiver=receiver,
                     content=chunk,
-                    message_type=MessageType.STREAM_CHUNK,
+                    kind=MessageKind.STREAM_CHUNK,
                     task_id=task_id,
                     metadata={
                         **(metadata or {}),
@@ -206,28 +210,28 @@ class CommunicationBus:
 
     def receive_messages(
         self,
-        agent_id: str,
+        agent_name: str,
         max_messages: int | None = None,
-    ) -> list[AgentMessage]:
+    ) -> list[Message]:
         with self._lock:
-            inbox = self.inboxes[agent_id]
+            inbox = self.inboxes[agent_name]
             limit = max_messages or len(inbox)
             messages = []
             for _ in range(min(limit, len(inbox))):
                 messages.append(inbox.popleft())
             return messages
 
-    def get_messages(self) -> list[AgentMessage]:
+    def get_messages(self) -> list[Message]:
         with self._lock:
             return list(self.messages)
 
-    def get_task(self, task_id: str) -> A2ATask | None:
+    def get_task(self, task_id: str) -> Task | None:
         with self._lock:
             return self.tasks.get(task_id)
 
     def task_snapshot(self) -> list[dict[str, Any]]:
         with self._lock:
-            return [task.to_dict() for task in self.tasks.values()]
+            return [task_to_dict(task) for task in self.tasks.values()]
 
     def _dispatch_loop(self) -> None:
         while not self._stop_event.is_set():
@@ -239,28 +243,30 @@ class CommunicationBus:
             self._route(message)
             self._dispatch_queue.task_done()
 
-    def _route(self, message: AgentMessage) -> None:
+    def _route(self, message: Message) -> None:
         A2AProtocol.validate_message(message)
+        sender = message_sender(message)
+        receiver = message_receiver(message)
         subscribers = []
 
         with self._lock:
             self.messages.append(message)
 
             if message.task_id and message.task_id in self.tasks:
-                self.tasks[message.task_id].add_message(message.message_id)
+                self.tasks[message.task_id].history.append(message)
 
-            if message.receiver == self.BROADCAST:
-                for agent_id in self.agent_cards:
-                    if agent_id != message.sender:
-                        self.inboxes[agent_id].append(message)
+            if receiver == self.BROADCAST:
+                for agent_name in self.agent_cards:
+                    if agent_name != sender:
+                        self.inboxes[agent_name].append(message)
             else:
-                self.inboxes[message.receiver].append(message)
+                self.inboxes[receiver].append(message)
 
-            subscribers.extend(self.subscriptions.get(message.receiver, []))
+            subscribers.extend(self.subscriptions.get(receiver, []))
             subscribers.extend(self.subscriptions.get(self.BROADCAST, []))
-            subscribers.extend(self.subscriptions.get(message.message_type.value, []))
+            subscribers.extend(self.subscriptions.get(message_kind(message), []))
 
-        logger.info(str(message))
+        logger.info(describe_message(message))
 
         for callback in subscribers:
             callback(message)

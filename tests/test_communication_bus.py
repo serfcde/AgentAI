@@ -3,19 +3,32 @@ import pytest
 from my_crew.a2a.communication import CommunicationBus
 from my_crew.a2a.message import (
     AgentCard,
-    AgentMessage,
-    MessageType,
-    TaskStatus,
+    Message,
+    MessageKind,
+    TaskState,
+    build_agent_card,
+    message_kind,
+    message_meta,
+    message_sender,
+    message_text,
+    new_agent_message,
 )
 from my_crew.a2a.protocol import A2AProtocol, A2AProtocolError
 
 
-def make_bus(*agent_ids: str) -> CommunicationBus:
+def make_card(name: str) -> AgentCard:
+    return build_agent_card(
+        name=name,
+        description=f"{name} test agent",
+        skill_id=name.lower().replace(" ", "-"),
+        skill_description=f"{name} skill",
+    )
+
+
+def make_bus(*agent_names: str) -> CommunicationBus:
     bus = CommunicationBus()
-    for agent_id in agent_ids:
-        bus.register_agent(
-            AgentCard(agent_id=agent_id, name=agent_id, description=agent_id)
-        )
+    for name in agent_names:
+        bus.register_agent(make_card(name))
     return bus
 
 
@@ -23,12 +36,19 @@ class TestRegistration:
     def test_register_and_list_agents(self):
         bus = make_bus("Agent A", "Agent B")
         cards = bus.list_agent_cards()
-        assert {card.agent_id for card in cards} == {"Agent A", "Agent B"}
+        assert {card.name for card in cards} == {"Agent A", "Agent B"}
 
-    def test_invalid_card_is_rejected(self):
+    def test_card_without_skills_is_rejected(self):
         bus = CommunicationBus()
         with pytest.raises(A2AProtocolError):
-            bus.register_agent(AgentCard(agent_id="", name="", description=""))
+            bus.register_agent(
+                AgentCard(name="Agent A", description="no skills", version="1.0.0")
+            )
+
+    def test_card_without_name_is_rejected(self):
+        bus = CommunicationBus()
+        with pytest.raises(A2AProtocolError):
+            bus.register_agent(AgentCard())
 
 
 class TestMessaging:
@@ -38,8 +58,8 @@ class TestMessaging:
 
         inbox = bus.receive_messages("Agent B")
         assert len(inbox) == 1
-        assert inbox[0].content == "hello"
-        assert inbox[0].sender == "Agent A"
+        assert message_text(inbox[0]) == "hello"
+        assert message_sender(inbox[0]) == "Agent A"
 
     def test_receive_messages_drains_inbox(self):
         bus = make_bus("Agent A", "Agent B")
@@ -62,12 +82,12 @@ class TestMessaging:
 
     def test_subscriber_callback_fires(self):
         bus = make_bus("Agent A", "Agent B")
-        received: list[AgentMessage] = []
+        received: list[Message] = []
         bus.subscribe("Agent B", received.append)
 
         bus.send_message("Agent A", "Agent B", "ping")
         assert len(received) == 1
-        assert received[0].content == "ping"
+        assert message_text(received[0]) == "ping"
 
     def test_stream_message_marks_last_chunk_final(self):
         bus = make_bus("Agent A", "Agent B")
@@ -75,46 +95,56 @@ class TestMessaging:
             "Agent A", "Agent B", ["chunk one", "chunk two", "chunk three"]
         )
 
-        assert [m.final for m in messages] == [False, False, True]
-        assert all(m.message_type == MessageType.STREAM_CHUNK for m in messages)
-        assert [m.metadata["chunk_index"] for m in messages] == [0, 1, 2]
+        finals = [message_meta(m, "final") for m in messages]
+        assert finals == [False, False, True]
+        assert all(
+            message_kind(m) == MessageKind.STREAM_CHUNK.value for m in messages
+        )
+        assert [message_meta(m, "chunk_index") for m in messages] == [0, 1, 2]
 
 
 class TestTasks:
     def test_create_task_and_status_update(self):
         bus = make_bus("Agent A", "Agent B")
         task = bus.create_task("demo task", owner="Agent A")
-        assert bus.get_task(task.task_id).status == TaskStatus.SUBMITTED
+        assert (
+            bus.get_task(task.id).status.state == TaskState.TASK_STATE_SUBMITTED
+        )
 
-        bus.update_task_status(task.task_id, TaskStatus.COMPLETED, sender="Agent A")
-        assert bus.get_task(task.task_id).status == TaskStatus.COMPLETED
+        bus.update_task_status(
+            task.id, TaskState.TASK_STATE_COMPLETED, sender="Agent A"
+        )
+        assert (
+            bus.get_task(task.id).status.state == TaskState.TASK_STATE_COMPLETED
+        )
 
-    def test_task_records_message_ids(self):
+    def test_task_records_message_history(self):
         bus = make_bus("Agent A", "Agent B")
         task = bus.create_task("demo task", owner="Agent A")
         message = bus.send_message(
-            "Agent A", "Agent B", "work update", task_id=task.task_id
+            "Agent A", "Agent B", "work update", task_id=task.id
         )
 
-        assert message.message_id in bus.get_task(task.task_id).messages
+        history_ids = [m.message_id for m in bus.get_task(task.id).history]
+        assert message.message_id in history_ids
 
     def test_task_snapshot_serializes(self):
         bus = make_bus("Agent A")
         bus.create_task("demo task", owner="Agent A", metadata={"k": "v"})
         snapshot = bus.task_snapshot()
         assert len(snapshot) == 1
-        assert snapshot[0]["metadata"] == {"k": "v"}
-        assert snapshot[0]["status"] == "submitted"
+        assert snapshot[0]["metadata"]["k"] == "v"
+        assert snapshot[0]["metadata"]["title"] == "demo task"
+        assert snapshot[0]["status"]["state"] == "TASK_STATE_SUBMITTED"
 
 
 class TestProtocol:
     def test_message_roundtrip(self):
-        message = AgentMessage(
+        message = new_agent_message(
             sender="Agent A",
             receiver="Agent B",
             content="hello",
-            message_type=MessageType.TASK_RESPONSE,
-            status=TaskStatus.WORKING,
+            kind=MessageKind.TASK_RESPONSE,
             metadata={"phase": "research"},
         )
         restored = A2AProtocol.deserialize_message(
@@ -123,9 +153,7 @@ class TestProtocol:
         assert restored == message
 
     def test_agent_card_roundtrip(self):
-        card = AgentCard(
-            agent_id="Agent A", name="Agent A", description="test agent"
-        )
+        card = make_card("Agent A")
         restored = A2AProtocol.deserialize_agent_card(
             A2AProtocol.serialize_agent_card(card)
         )
@@ -134,8 +162,12 @@ class TestProtocol:
     def test_bus_accepts_serialized_protocol_message(self):
         bus = make_bus("Agent A", "Agent B")
         serialized = A2AProtocol.serialize_message(
-            AgentMessage(sender="Agent A", receiver="Agent B", content="over the wire")
+            new_agent_message("Agent A", "Agent B", "over the wire")
         )
         bus.send_protocol_message(serialized)
         inbox = bus.receive_messages("Agent B")
-        assert inbox[0].content == "over the wire"
+        assert message_text(inbox[0]) == "over the wire"
+
+    def test_invalid_payload_raises(self):
+        with pytest.raises(A2AProtocolError):
+            A2AProtocol.deserialize_message("{not json")

@@ -1,6 +1,6 @@
 from crewai import Crew, Process
 
-from my_crew.a2a.message import TaskStatus
+from my_crew.a2a.message import TaskState
 from my_crew.agents.researcher import create_research_agent
 from my_crew.agents.planner import create_planner_agent
 from my_crew.agents.executor import create_executor_agent
@@ -17,8 +17,8 @@ from my_crew.workflows.network_flow import create_network_bus
 def run_hierarchical_flow(topic: str):
     bus, workflow_task = create_network_bus(topic)
     bus.update_task_status(
-        workflow_task.task_id,
-        TaskStatus.WORKING,
+        workflow_task.id,
+        TaskState.TASK_STATE_WORKING,
         sender="Supervisor Agent",
         content="Hierarchical workflow delegated to supervisor manager.",
     )
@@ -90,8 +90,8 @@ def run_hierarchical_flow(topic: str):
     result = crew.kickoff()
 
     bus.update_task_status(
-        workflow_task.task_id,
-        TaskStatus.COMPLETED,
+        workflow_task.id,
+        TaskState.TASK_STATE_COMPLETED,
         sender="Supervisor Agent",
         content="Hierarchical workflow completed.",
     )
