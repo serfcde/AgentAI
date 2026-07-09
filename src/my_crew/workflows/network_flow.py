@@ -8,21 +8,20 @@ from my_crew.a2a.message import (
     message_kind,
     message_text,
 )
-
-from my_crew.agents.llm_judge import get_default_llm_caller
-from my_crew.agents.researcher import create_research_agent
-from my_crew.agents.planner import create_planner_agent
 from my_crew.agents.executor import create_executor_agent
+from my_crew.agents.llm_judge import get_default_llm_caller
+from my_crew.agents.planner import create_planner_agent
+from my_crew.agents.researcher import create_research_agent
 from my_crew.agents.supervisor_controller import (
     SupervisorAction,
     SupervisorController,
 )
 from my_crew.agents.validator import create_validator_agent
-
-from my_crew.tasks.research_task import create_research_task
-from my_crew.tasks.planning_task import create_planning_task
 from my_crew.tasks.execution_task import create_execution_task
+from my_crew.tasks.planning_task import create_planning_task
+from my_crew.tasks.research_task import create_research_task
 from my_crew.tasks.validation_task import create_validation_task
+from my_crew.utils.metrics import MetricsCollector
 
 
 def build_agent_cards():
@@ -148,6 +147,7 @@ def run_network_flow(topic):
         "execution": "",
         "validation": "",
     }
+    metrics = MetricsCollector()
     supervisor_feedback = ""
     current_phase = "research"
 
@@ -156,6 +156,7 @@ def run_network_flow(topic):
         agent_id = phase_config["agent_id"]
         supervisor.start_phase(current_phase, agent_id)
 
+        started = metrics.start_timer()
         result = execute_workflow_phase(
             phase=current_phase,
             agent=agents[current_phase],
@@ -163,6 +164,7 @@ def run_network_flow(topic):
             bus=bus,
             supervisor_feedback=supervisor_feedback,
         )
+        metrics.record_phase(current_phase, started, result)
         results[current_phase] = str(result)
 
         bus.send_message(
@@ -260,6 +262,15 @@ SUPERVISOR DECISIONS
 ==============================
 
 {supervisor.decision_snapshot()}
+
+
+==============================
+PHASE METRICS
+==============================
+
+{metrics.snapshot()}
+
+Totals: {metrics.totals()}
 
 
 ==============================

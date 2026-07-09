@@ -6,7 +6,6 @@ from my_crew.tools.memory_tool import memory_tool
 from my_crew.tools.notification_tool import notification_tool
 from my_crew.tools.web_search_tool import web_search_tool
 
-
 TOOL_REGISTRY = {
     "api_tool": api_tool,
     "calculator_tool": calculator_tool,

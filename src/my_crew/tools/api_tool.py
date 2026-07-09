@@ -1,5 +1,5 @@
-from crewai.tools import tool
 import requests
+from crewai.tools import tool
 
 
 @tool("API Tool")

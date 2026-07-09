@@ -1,7 +1,8 @@
-from crewai.tools import tool
-import os
 import json
+import os
+
 import yaml
+from crewai.tools import tool
 
 
 @tool("File Reader Tool")
@@ -19,7 +20,7 @@ def file_reader_tool(file_path: str) -> str:
 
         file_extension = file_path.split(".")[-1]
 
-        with open(file_path, "r", encoding="utf-8") as file:
+        with open(file_path, encoding="utf-8") as file:
 
             if file_extension == "txt":
                 return file.read()

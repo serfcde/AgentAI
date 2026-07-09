@@ -27,7 +27,6 @@ from a2a.types import (
 from google.protobuf import struct_pb2
 from google.protobuf.json_format import MessageToDict
 
-
 __all__ = [
     "AgentCapabilities",
     "AgentCard",

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "my-crew"
 version = "0.2.0"
-description = "Production-style CrewAI multi-agent workflow with A2A-style communication."
+description = "Production-style CrewAI multi-agent workflow with Google A2A communication."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
@@ -16,19 +16,24 @@ dependencies = [
   "a2a-sdk==1.1.0",
   "crewai==1.14.5",
   "duckduckgo-search==8.1.1",
+  "fastapi==0.139.0",
   "python-dotenv==1.2.2",
   "pyyaml==6.0.3",
   "requests==2.34.2",
+  "uvicorn==0.48.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+  "httpx==0.28.1",
   "pytest==9.1.1",
+  "ruff==0.14.5",
 ]
 
 [project.scripts]
 my-crew = "my_crew.main:main"
 my-crew-eval = "my_crew.evaluation:main"
+my-crew-api = "my_crew.api:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -39,3 +44,11 @@ my_crew = ["config/*.yaml"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]

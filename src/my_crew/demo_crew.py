@@ -4,13 +4,13 @@ Requires a running Ollama instance. Run with:
     PYTHONPATH=src python -m my_crew.demo_crew
 """
 
-from crewai import Task, Crew
+from crewai import Crew, Task
 
-from my_crew.agents.researcher import create_research_agent
-from my_crew.agents.planner import create_planner_agent
 from my_crew.agents.executor import create_executor_agent
-from my_crew.agents.validator import create_validator_agent
+from my_crew.agents.planner import create_planner_agent
+from my_crew.agents.researcher import create_research_agent
 from my_crew.agents.supervisor import create_supervisor_agent
+from my_crew.agents.validator import create_validator_agent
 
 
 def build_demo_crew() -> Crew:

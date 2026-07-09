@@ -1,14 +1,11 @@
 import json
 
-import pytest
-
 from my_crew.a2a.communication import CommunicationBus
 from my_crew.a2a.message import TaskState, build_agent_card
 from my_crew.agents.supervisor_controller import (
     SupervisorAction,
     SupervisorController,
 )
-
 
 AGENT_NAMES = [
     "Supervisor Agent",

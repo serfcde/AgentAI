@@ -1,5 +1,7 @@
 # Production-Style CrewAI Multi-Agent Workflow
 
+[![CI](https://github.com/serfcde/AgentAI/actions/workflows/ci.yml/badge.svg)](https://github.com/serfcde/AgentAI/actions/workflows/ci.yml)
+
 A modular CrewAI workflow with five agents, seven tools, YAML-backed
 agent/task configuration, **Google A2A protocol** inter-agent communication
 (official `a2a-sdk` types), and supervisor-controlled orchestration — running
@@ -25,13 +27,14 @@ The default LLM backend is Ollama with `llama3.1`.
 ├── docs/
 │   └── workflow-graph.md
 ├── src/my_crew/
-│   ├── a2a/                  # A2A messages, protocol, task lifecycle, bus
+│   ├── a2a/                  # Google A2A types, protocol, in-process bus
 │   ├── agents/               # YAML-backed agent factories, supervisor, LLM judge
 │   ├── config/               # agents.yaml, tasks.yaml, LLM config
 │   ├── tasks/                # YAML-backed task factories
-│   ├── tools/                # CrewAI tools
-│   ├── utils/                # Logging
+│   ├── tools/                # CrewAI tools (incl. SQLite-backed memory)
+│   ├── utils/                # Logging, per-phase metrics
 │   ├── workflows/            # Network, hierarchical, parallel, router
+│   ├── api.py                # FastAPI service with SSE streaming
 │   ├── crew.py
 │   ├── demo_crew.py          # Manual all-agents demo (requires Ollama)
 │   ├── evaluation.py         # my-crew-eval: compare workflow patterns
@@ -72,6 +75,9 @@ The web search tool accepts any topic and uses `duckduckgo-search`. If network
 access is unavailable, it returns a clean tool error instead of crashing the
 workflow.
 
+The memory tool is **SQLite-backed and persistent across runs** (path
+configurable via `MY_CREW_MEMORY_DB`, default `my_crew_memory.db`).
+
 ## A2A And Supervision
 
 Inter-agent communication uses the **official Google A2A protocol types**
@@ -92,7 +98,14 @@ chunk support. Because A2A addresses agents at the transport level,
 sender/receiver metadata travels in `Message.metadata`.
 
 The network workflow uses `SupervisorController` to inspect phase outputs and
-decide whether to continue, retry, reassign, fail, or complete.
+decide whether to continue, retry, reassign, fail, or complete. The parallel
+workflow reuses the same controller: research and planning outputs are
+reviewed after the concurrent phase, retried once with supervisor feedback if
+rejected, and all decisions appear in the final output.
+
+Every network-flow phase is also measured (wall-clock duration, output size,
+and token usage when available) and reported in a `PHASE METRICS` section via
+`src/my_crew/utils/metrics.py`.
 
 ### LLM-judged supervision with deterministic fallback
 
@@ -232,6 +245,36 @@ differently based on topic semantics):
 - `analysis of agent orchestration` -> hierarchical workflow
 - `multiple AI workflow strategies` -> parallel workflow
 
+### HTTP API with live streaming
+
+Start the FastAPI service:
+
+```bash
+my-crew-api
+# or: uvicorn my_crew.api:app --reload
+```
+
+Endpoints:
+
+```text
+POST /workflows                  {"topic": "...", "workflow": "auto"}  -> 202 + job_id
+GET  /workflows/{job_id}         job status, error, and final result
+GET  /workflows/{job_id}/stream  Server-Sent Events: live A2A messages,
+                                 routing decisions, and the final result
+GET  /health                     liveness probe
+```
+
+Example:
+
+```bash
+JOB=$(curl -s -X POST localhost:8000/workflows \
+  -H 'Content-Type: application/json' \
+  -d '{"topic": "Future of AI Agents"}' | python -c 'import sys,json;print(json.load(sys.stdin)["job_id"])')
+
+curl -N "localhost:8000/workflows/$JOB/stream"   # watch agents talk live
+curl -s "localhost:8000/workflows/$JOB"          # final result
+```
+
 ## Docker Setup
 
 Build the image:
@@ -258,6 +301,18 @@ Run the app interactively:
 docker compose run --rm app
 ```
 
+Start the HTTP API on port 8000:
+
+```bash
+docker compose up api
+```
+
+Compare workflow patterns (writes to `./reports`):
+
+```bash
+docker compose run --rm eval --topic "Future of AI Agents"
+```
+
 Stop services:
 
 ```bash
@@ -277,9 +332,12 @@ The app uses these environment variables:
 ```text
 OLLAMA_MODEL=llama3.1
 OLLAMA_BASE_URL=http://localhost:11434
-MY_CREW_LLM_SUPERVISOR=1   # set to 0 for heuristic-only supervision
-MY_CREW_LLM_ROUTING=1      # set to 0 for keyword-only routing
-MY_CREW_LLM_SCORING=1      # set to 0 to skip LLM scores in my-crew-eval
+MY_CREW_LLM_SUPERVISOR=1        # set to 0 for heuristic-only supervision
+MY_CREW_LLM_ROUTING=1           # set to 0 for keyword-only routing
+MY_CREW_LLM_SCORING=1           # set to 0 to skip LLM scores in my-crew-eval
+MY_CREW_MEMORY_DB=my_crew_memory.db   # persistent memory tool database
+MY_CREW_API_HOST=127.0.0.1      # my-crew-api bind host
+MY_CREW_API_PORT=8000           # my-crew-api port
 MY_CREW_LOG_LEVEL=INFO
 ```
 

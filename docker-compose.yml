@@ -18,6 +18,45 @@ services:
       - ./.env:/app/.env:ro
     command: ["python", "-m", "my_crew.main"]
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: my-crew-api
+    environment:
+      PYTHONPATH: /app/src
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: llama3.1
+      MY_CREW_API_HOST: 0.0.0.0
+    ports:
+      - "8000:8000"
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    volumes:
+      - ./src:/app/src:ro
+      - ./.env:/app/.env:ro
+    command: ["python", "-m", "my_crew.api"]
+
+  eval:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: my-crew-eval
+    profiles: ["eval"]
+    environment:
+      PYTHONPATH: /app/src
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: llama3.1
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    volumes:
+      - ./src:/app/src:ro
+      - ./.env:/app/.env:ro
+      - ./reports:/app/reports
+    entrypoint: ["python", "-m", "my_crew.evaluation"]
+
   ollama:
     image: ollama/ollama:latest
     container_name: my-crew-ollama

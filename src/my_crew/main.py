@@ -7,7 +7,6 @@ from my_crew.agents.supervisor import decide_workflow
 from my_crew.utils.logger import get_logger
 from my_crew.workflows.workflow_router import WORKFLOW_RUNNERS
 
-
 logger = get_logger("my_crew.main")
 
 

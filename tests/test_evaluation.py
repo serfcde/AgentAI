@@ -45,7 +45,9 @@ class TestEvaluateWorkflows:
 
 class TestScoreOutput:
     def test_score_is_clamped_to_range(self):
-        caller = lambda prompt: json.dumps({"score": 42, "justification": "wow"})
+        def caller(prompt: str) -> str:
+            return json.dumps({"score": 42, "justification": "wow"})
+
         assert score_output("t", "output", caller)["score"] == 10
 
     def test_unparseable_score_returns_none(self):

@@ -13,7 +13,6 @@ from typing import Any
 
 from my_crew.utils.logger import get_logger
 
-
 logger = get_logger("my_crew.llm_judge")
 
 LLMCaller = Callable[[str], str]

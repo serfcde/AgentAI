@@ -7,7 +7,6 @@ from my_crew.config.loader import (
 )
 from my_crew.tools.registry import TOOL_REGISTRY, resolve_tools
 
-
 EXPECTED_AGENTS = {
     "research_agent",
     "planning_agent",

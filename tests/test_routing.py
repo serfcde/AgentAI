@@ -17,11 +17,15 @@ class TestHeuristicRouting:
 
 class TestLLMRouting:
     def test_llm_choice_wins(self):
-        caller = lambda prompt: json.dumps({"workflow": "parallel"})
+        def caller(prompt: str) -> str:
+            return json.dumps({"workflow": "parallel"})
+
         assert decide_workflow("future of AI agents", llm_caller=caller) == "parallel"
 
     def test_invalid_llm_choice_falls_back_to_heuristics(self):
-        caller = lambda prompt: json.dumps({"workflow": "quantum"})
+        def caller(prompt: str) -> str:
+            return json.dumps({"workflow": "quantum"})
+
         assert decide_workflow("analysis of X", llm_caller=caller) == "hierarchical"
 
     def test_llm_error_falls_back_to_heuristics(self):

@@ -1,6 +1,7 @@
+import os
+
 from crewai import LLM
 from dotenv import load_dotenv
-import os
 
 load_dotenv()
 

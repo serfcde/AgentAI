@@ -6,8 +6,8 @@ warnings.filterwarnings(
     category=RuntimeWarning,
 )
 
-from crewai.tools import tool
-from duckduckgo_search import DDGS
+from crewai.tools import tool  # noqa: E402
+from duckduckgo_search import DDGS  # noqa: E402
 
 
 @tool("Web Search Tool")

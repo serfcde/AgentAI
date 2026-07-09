@@ -4,7 +4,6 @@ from typing import Any
 
 import yaml
 
-
 CONFIG_DIR = Path(__file__).resolve().parent
 
 

@@ -1,5 +1,6 @@
 from crewai.tools import tool
 
+
 @tool("Calculator Tool")
 def calculator_tool(expression: str) -> str:
     """

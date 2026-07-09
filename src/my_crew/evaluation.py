@@ -21,7 +21,6 @@ from my_crew.agents.llm_judge import (
 )
 from my_crew.utils.logger import get_logger
 
-
 logger = get_logger("my_crew.evaluation")
 
 QUALITY_PROMPT = """You are grading the final output of a multi-agent workflow.

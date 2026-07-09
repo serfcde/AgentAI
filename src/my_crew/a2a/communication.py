@@ -10,10 +10,10 @@ from my_crew.a2a.message import (
     MessageKind,
     Task,
     TaskState,
+    describe_message,
     message_kind,
     message_receiver,
     message_sender,
-    describe_message,
     new_agent_message,
     new_task,
     set_task_state,
@@ -22,7 +22,6 @@ from my_crew.a2a.message import (
 )
 from my_crew.a2a.protocol import A2AProtocol
 from my_crew.utils.logger import get_logger
-
 
 logger = get_logger("my_crew.a2a")
 
@@ -38,6 +37,18 @@ class CommunicationBus:
     """
 
     BROADCAST = "*"
+
+    _global_subscribers: list[Subscriber] = []
+
+    @classmethod
+    def add_global_subscriber(cls, callback: Subscriber) -> None:
+        """Register a callback that receives every message from every bus."""
+        cls._global_subscribers.append(callback)
+
+    @classmethod
+    def remove_global_subscriber(cls, callback: Subscriber) -> None:
+        if callback in cls._global_subscribers:
+            cls._global_subscribers.remove(callback)
 
     def __init__(self, auto_start: bool = False):
         self.agent_cards: dict[str, AgentCard] = {}
@@ -268,5 +279,5 @@ class CommunicationBus:
 
         logger.info(describe_message(message))
 
-        for callback in subscribers:
+        for callback in [*subscribers, *self._global_subscribers]:
             callback(message)

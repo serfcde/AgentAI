@@ -1,5 +1,6 @@
-from crewai.tools import tool
 from datetime import datetime
+
+from crewai.tools import tool
 
 
 @tool("Logger Tool")

@@ -1,15 +1,14 @@
 from crewai import Crew, Process
 
 from my_crew.a2a.message import TaskState
-from my_crew.agents.researcher import create_research_agent
-from my_crew.agents.planner import create_planner_agent
 from my_crew.agents.executor import create_executor_agent
-from my_crew.agents.validator import create_validator_agent
+from my_crew.agents.planner import create_planner_agent
+from my_crew.agents.researcher import create_research_agent
 from my_crew.agents.supervisor import create_supervisor_agent
-
-from my_crew.tasks.research_task import create_research_task
-from my_crew.tasks.planning_task import create_planning_task
+from my_crew.agents.validator import create_validator_agent
 from my_crew.tasks.execution_task import create_execution_task
+from my_crew.tasks.planning_task import create_planning_task
+from my_crew.tasks.research_task import create_research_task
 from my_crew.tasks.validation_task import create_validation_task
 from my_crew.workflows.network_flow import create_network_bus
 
